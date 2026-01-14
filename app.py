@@ -14,6 +14,30 @@ import firebase_admin
 from firebase_admin import credentials, firestore, storage
 import PyPDF2  # PDF用に追加
 import io
+# ==========================================
+# 🚑 緊急診断コード（ここから）
+# ==========================================
+st.divider()
+st.error("🚑 診断モード起動中")
+
+# 1. ライブラリのバージョンを確認
+try:
+    st.write(f"**google-generativeai バージョン:** `{genai.__version__}`")
+except:
+    st.write("**google-generativeai バージョン:** 取得不可")
+
+# 2. 実際に利用可能なモデル一覧を全表示
+st.write("**▼ この環境で使えるモデル一覧:**")
+try:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    for m in genai.list_models():
+        # 生成可能なモデルだけを表示
+        if 'generateContent' in m.supported_generation_methods:
+            st.code(m.name) # コピーしやすいようにコードブロックで表示
+except Exception as e:
+    st.error(f"モデル一覧の取得に失敗: {e}")
+
+st.divider()
 
 # ---------------------------
 # 基本設定
