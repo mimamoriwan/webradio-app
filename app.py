@@ -275,7 +275,7 @@ if ready_to_generate:
                 # 2. 台本作成
                 with st.spinner("✍️ AIが構成を考えています..."):
                     genai.configure(api_key=gemini_key)
-                    model = genai.GenerativeModel('gemini-1.5-flash-latest') # モデル名修正
+                    model = genai.GenerativeModel('gemini-1.5-flash-001') # モデル名修正
                     
                     # 出典の明記を指示に追加
                     source_statement = ""
