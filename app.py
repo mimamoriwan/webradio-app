@@ -12,6 +12,8 @@ from urllib.parse import urlparse, parse_qs
 import yt_dlp
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
+import PyPDF2  # PDF用に追加
+import io
 
 # ---------------------------
 # 基本設定
@@ -19,7 +21,7 @@ from firebase_admin import credentials, firestore, storage
 st.set_page_config(page_title="WebRadio", page_icon="📻")
 
 # ★設定エリア
-BUCKET_NAME = "webradio-app1.firebasestorage.app" 
+BUCKET_NAME = "webradio-app1.firebasestorage.app"
 
 # ---------------------------
 # APIキーとFirebase設定の読み込み
@@ -48,10 +50,23 @@ if firebase_admin._apps:
     bucket = storage.bucket()
 
 # ---------------------------
-# 関数定義エリア（変更なし）
+# 関数定義エリア
 # ---------------------------
-def generate_cache_key(url, style, lang):
-    unique_string = f"{url}_{style}_{lang}"
+# ★安全対策：ドメイン判定関数
+def is_safe_domain(url):
+    try:
+        domain = urlparse(url).netloc
+        # ホワイトリスト（安全とみなすドメイン）
+        safe_suffixes = ['.go.jp', '.lg.jp', '.ac.jp', '.ed.jp', '.or.jp']
+        for suffix in safe_suffixes:
+            if domain.endswith(suffix):
+                return True
+        return False
+    except:
+        return False
+
+def generate_cache_key(source_id, style, lang):
+    unique_string = f"{source_id}_{style}_{lang}"
     return hashlib.md5(unique_string.encode()).hexdigest()
 
 def check_cache(cache_key):
@@ -61,16 +76,18 @@ def check_cache(cache_key):
     if doc.exists: return doc.to_dict()
     return None
 
-def save_to_cache(cache_key, audio_data, url, style, lang, title):
+def save_to_cache(cache_key, audio_data, source_info, style, lang, title):
     if not firebase_admin._apps: return None
+    # Firebase Storageへ保存
     blob = bucket.blob(f"audio/{cache_key}.mp3")
     blob.upload_from_string(audio_data, content_type="audio/mp3")
     blob.make_public()
     audio_url = blob.public_url
 
+    # Firestoreへメタデータ保存
     doc_ref = db.collection('radios').document(cache_key)
     doc_ref.set({
-        'url': url,
+        'source': source_info,
         'style': style,
         'language': lang,
         'title': title,
@@ -94,38 +111,23 @@ def get_style_config(style_key, language):
         config = {"prompt_role": "【役割】A:男子大学生 B:女子大学生 口調:学食トーク", "voice_a": "fable", "voice_b": "alloy"}
     return config
 
-def transcribe_with_whisper(video_url, api_key):
-    client = OpenAI(api_key=api_key)
-    output_filename = "temp_audio.mp3"
-    if os.path.exists(output_filename): os.remove(output_filename)
-    ydl_opts = {'format':'bestaudio/best','postprocessors':[{'key':'FFmpegExtractAudio','preferredcodec':'mp3'}],'outtmpl':'temp_audio','quiet':True}
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl: ydl.download([video_url])
-        if not os.path.exists(output_filename):
-            for f in os.listdir('.'):
-                if f.startswith("temp_audio"): output_filename = f; break
-        with open(output_filename, "rb") as f: transcript = client.audio.transcriptions.create(model="whisper-1", file=f, response_format="text")
-        if os.path.exists(output_filename): os.remove(output_filename)
-        return transcript
-    except Exception as e: return f"Error: {e}"
-
-def get_video_id(url):
-    parsed = urlparse(url)
-    if "youtube.com" in parsed.netloc: return parse_qs(parsed.query).get("v", [None])[0]
-    elif "youtu.be" in parsed.netloc: return parsed.path[1:]
-    return None
-
-def fetch_content(url, openai_api_key):
+# コンテンツ取得関数（URL用）
+def fetch_content_from_url(url, openai_api_key):
     if "youtube.com" in url or "youtu.be" in url:
-        video_id = get_video_id(url)
-        if not video_id: return "Error"
+        # YouTube処理（省略せずに実装）
+        parsed = urlparse(url)
+        if "youtube.com" in parsed.netloc: video_id = parse_qs(parsed.query).get("v", [None])[0]
+        elif "youtu.be" in parsed.netloc: video_id = parsed.path[1:]
+        else: video_id = None
+        
+        if not video_id: return "Error: Video ID not found"
         try:
             ts = YouTubeTranscriptApi.get_transcript(video_id, languages=['ja','en'])
             return f"【YouTube(字幕)】\n{' '.join([t['text'] for t in ts])[:5000]}..."
         except:
-            if not openai_api_key: return "【YouTube】字幕なし(要OpenAIキー)"
-            return f"【YouTube(音声)】\n{transcribe_with_whisper(url, openai_api_key)[:5000]}..."
+            return "字幕が見つかりませんでした。"
     else:
+        # Web記事処理
         try:
             res = requests.get(url, timeout=10)
             res.encoding = res.apparent_encoding
@@ -134,26 +136,28 @@ def fetch_content(url, openai_api_key):
             return f"【Web記事：{title}】\n{' '.join([p.text for p in soup.find_all('p')])[:5000]}..."
         except: return f"Error: {url}"
 
+# PDF読み込み関数
+def extract_text_from_pdf(uploaded_file):
+    try:
+        reader = PyPDF2.PdfReader(uploaded_file)
+        text = ""
+        for page in reader.pages:
+            text += page.extract_text()
+        return f"【PDF資料：{uploaded_file.name}】\n{text[:10000]}..." # 文字数制限
+    except Exception as e:
+        return f"PDF読み込みエラー: {e}"
+
 # ---------------------------
-# メイン画面（ここを大改造しました！）
+# メイン画面
 # ---------------------------
 st.title("📻 WebRadio Maker")
-st.caption("記事や動画のURLを入れるだけで、AIが楽しいラジオ番組にします。")
+st.caption("公的情報や社内資料を、AIが聞きやすいラジオ番組にします。")
 
-# APIキーチェック（画面には出さず、裏でチェック）
-if not gemini_key or not openai_key:
-    st.error("⚠️ 管理者設定エラー：APIキーが設定されていません。")
-
-# ★ここが変更点！メイン画面に設定を移動
-# -----------------------------------
-st.markdown("##### ⚙️ 番組の設定") # 小さめの見出し
-
-# 2列（カラム）を作って横に並べる
+# 設定エリア
+st.markdown("##### ⚙️ 番組の設定")
 col1, col2 = st.columns(2)
-
 with col1:
     language = st.selectbox("放送言語", ["日本語", "英語", "中国語"], index=0)
-
 with col2:
     style_options = {
         "standard": "🎙️ 標準ニュース",
@@ -163,50 +167,140 @@ with col2:
         "university": "🏫 大学生トーク"
     }
     style_key = st.selectbox("番組の雰囲気", options=list(style_options.keys()), format_func=lambda x: style_options[x])
+st.markdown("---")
 
-st.markdown("---") # 区切り線
-# -----------------------------------
+# ★入力モード切替
+input_mode = st.radio("入力ソースを選択", ["URL (記事・動画)", "PDF (資料アップロード)"], horizontal=True)
 
-url_input = st.text_input("記事または動画のURL", placeholder="https://...")
+content_text = ""
+source_id = "" # キャッシュキーの元になるもの
+title_str = "ラジオ番組"
+allow_cache = True # キャッシュして良いかどうか（デフォルトTrue）
+ready_to_generate = False # 生成ボタンを押せるかどうか
 
-if st.button("🎙️ 番組を再生する", use_container_width=True): # ボタンをスマホ幅いっぱいに
-    if not url_input:
-        st.warning("URLを入力してください")
-    else:
-        # ここから下のロジックは変更なし
-        style_config = get_style_config(style_key, language)
-        cache_key = generate_cache_key(url_input, style_key, language)
+# ---------------------------
+# モードA：URL入力
+# ---------------------------
+if input_mode == "URL (記事・動画)":
+    url_input = st.text_input("記事または動画のURL", placeholder="https://...")
+    
+    if url_input:
+        source_id = url_input
+        # ★判定ロジック
+        if is_safe_domain(url_input):
+            st.success("✅ 公的機関・教育機関等のドメインを確認しました。通常モードで生成可能です。")
+            ready_to_generate = True
+            allow_cache = True
+        else:
+            # ⚠️ 警告モード
+            st.warning("⚠️ 公的機関以外のドメインが検出されました")
+            st.info("""
+            **【確認事項】**
+            入力されたURLは公的機関のものではありません。著作権および利用規約を遵守するため、以下の条件に同意する場合のみ利用可能です。
+            
+            1. **私的利用**（個人での学習・情報収集）に限ること。
+            2. 生成された音声を**SNS等で公開・配布しない**こと。
+            3. **キャッシュ機能（0秒再生）は無効**になります（サーバーに保存されません）。
+            """)
+            agree = st.checkbox("上記に同意し、自己責任で生成します")
+            if agree:
+                ready_to_generate = True
+                allow_cache = False # ★強制的にキャッシュOFF
+            else:
+                ready_to_generate = False
+
+# ---------------------------
+# モードB：PDFアップロード
+# ---------------------------
+elif input_mode == "PDF (資料アップロード)":
+    uploaded_file = st.file_uploader("PDFファイルをアップロード", type="pdf")
+    
+    if uploaded_file:
+        source_id = uploaded_file.name + str(uploaded_file.size) # ファイル名+サイズで識別
+        title_str = uploaded_file.name
         
-        cached_data = check_cache(cache_key)
+        st.markdown("**この資料の種類を選択してください：**")
+        doc_type = st.radio("資料タイプ", 
+            ["公的機関の資料・広報物（国・自治体など）", 
+             "社内資料・自分自身の著作物", 
+             "その他（第三者の著作物・ニュース等）"],
+            index=None
+        )
+        
+        if doc_type == "公的機関の資料・広報物（国・自治体など）" or doc_type == "社内資料・自分自身の著作物":
+            st.success("✅ 権利確認OK。通常モードで生成可能です。")
+            ready_to_generate = True
+            allow_cache = True
+        elif doc_type == "その他（第三者の著作物・ニュース等）":
+            st.warning("⚠️ 第三者の著作物が選択されました")
+            st.info("私的利用の範囲内でのみ利用可能です。キャッシュ機能は無効化されます。")
+            agree_pdf = st.checkbox("利用規約・著作権を遵守し、自己責任で生成します")
+            if agree_pdf:
+                ready_to_generate = True
+                allow_cache = False # ★強制的にキャッシュOFF
+            else:
+                ready_to_generate = False
+
+# ---------------------------
+# 生成ボタンと実行ロジック
+# ---------------------------
+if ready_to_generate:
+    btn_label = "🎙️ 番組を再生する" if allow_cache else "🎙️ 番組を再生する（保存なしモード）"
+    
+    if st.button(btn_label, use_container_width=True):
+        style_config = get_style_config(style_key, language)
+        cache_key = generate_cache_key(source_id, style_key, language)
+        
+        # キャッシュ確認（allow_cacheがTrueの時だけ見に行く）
+        cached_data = None
+        if allow_cache:
+            cached_data = check_cache(cache_key)
         
         if cached_data:
-            st.success(f"♻️ キャッシュが見つかりました！(無料)\nタイトル: {cached_data.get('title', '無題')}")
+            st.success(f"♻️ キャッシュから再生します！\nタイトル: {cached_data.get('title', '無題')}")
             st.audio(cached_data['audio_url'], format="audio/mp3")
-            # ダウンロードボタンなどもここに入れる
         
         else:
+            # 新規生成プロセス
             try:
-                with st.spinner("🐢 取材中..."):
-                    content_text = fetch_content(url_input, openai_key)
+                # 1. コンテンツ取得
+                with st.spinner("🐢 資料を読み込んでいます..."):
+                    if input_mode == "URL (記事・動画)":
+                        content_text = fetch_content_from_url(url_input, openai_key)
+                        if "【Web記事：" in content_text:
+                            title_str = content_text.split("【Web記事：")[1].split("】")[0]
+                    else:
+                        content_text = extract_text_from_pdf(uploaded_file)
                 
-                with st.spinner("✍️ 台本作成中..."):
+                # 2. 台本作成
+                with st.spinner("✍️ AIが構成を考えています..."):
                     genai.configure(api_key=gemini_key)
-                    model = genai.GenerativeModel('gemini-flash-latest')
+                    model = genai.GenerativeModel('gemini-1.5-flash') # モデル名修正
+                    
+                    # 出典の明記を指示に追加
+                    source_statement = ""
+                    if input_mode == "PDF (資料アップロード)":
+                        source_statement = f"冒頭で『この放送は、資料 {title_str} を元にAIが作成しました』と明言すること。"
+                    
                     prompt = f"""
                     以下の情報を元にラジオ台本を作成してください。
                     {style_config['prompt_role']}
+                    {source_statement}
+                    
                     【重要：出力形式】
                     - 表形式は禁止。会話文のみ箇条書き。
-                    - ト書き不要。
-                    A: (Aのセリフ)
-                    B: (Bのセリフ)
+                    - 専門用語はわかりやすく噛み砕くこと。
+                    - 事実関係（数字・日付）は正確に。
+                    
                     【構成】OP→本題→ED。5分程度。
-                    【取材データ】
+                    
+                    【入力データ】
                     {content_text}
                     """
                     script_text = model.generate_content(prompt).text
-                    with st.expander("台本を見る"): st.write(script_text)
+                    with st.expander("作成された台本を見る"): st.write(script_text)
 
+                # 3. 音声合成
                 with st.spinner("🎙️ 収録中..."):
                     client = OpenAI(api_key=openai_key)
                     lines = script_text.split('\n')
@@ -234,16 +328,20 @@ if st.button("🎙️ 番組を再生する", use_container_width=True): # ボ�
                             except: pass
                 
                 if len(combined_audio) == 0:
-                    st.error("⚠️ 生成失敗。キャッシュ保存しません。")
+                    st.error("⚠️ 音声生成に失敗しました。")
                 else:
-                    with st.spinner("💾 保存中..."):
-                        title = "ラジオ番組"
-                        if "【Web記事：" in content_text:
-                            title = content_text.split("【Web記事：")[1].split("】")[0]
-                        audio_url = save_to_cache(cache_key, combined_audio, url_input, style_key, language, title)
-
-                    st.success("🎉 完成！")
-                    st.audio(audio_url, format="audio/mp3")
+                    # 4. 保存と再生
+                    if allow_cache:
+                        # 通常モード：Firebaseに保存
+                        with st.spinner("💾 クラウドに保存中..."):
+                            audio_url = save_to_cache(cache_key, combined_audio, source_id, style_key, language, title_str)
+                        st.success("🎉 完成！")
+                        st.audio(audio_url, format="audio/mp3")
+                    else:
+                        # ⚠️ 私的利用モード：保存せずにその場だけで再生
+                        st.success("🎉 完成！（保存なしモード）")
+                        st.warning("⚠️ この音声は保存されていません。ページを閉じると消えます。")
+                        st.audio(combined_audio, format="audio/mp3")
 
             except Exception as e:
-                st.error(f"エラー: {e}")
+                st.error(f"エラーが発生しました: {e}")
