@@ -135,7 +135,6 @@ def get_style_config(style_key, language):
 # コンテンツ取得関数（URL用）
 def fetch_content_from_url(url, openai_api_key):
     if "youtube.com" in url or "youtu.be" in url:
-        # YouTube処理
         parsed = urlparse(url)
         if "youtube.com" in parsed.netloc: video_id = parse_qs(parsed.query).get("v", [None])[0]
         elif "youtu.be" in parsed.netloc: video_id = parsed.path[1:]
@@ -148,7 +147,6 @@ def fetch_content_from_url(url, openai_api_key):
         except:
             return "字幕が見つかりませんでした。"
     else:
-        # Web記事処理
         try:
             res = requests.get(url, timeout=10)
             res.encoding = res.apparent_encoding
@@ -207,26 +205,23 @@ if input_mode == "URL (記事・動画)":
     
     if url_input:
         source_id = url_input
-        # ★判定ロジック
         if is_safe_domain(url_input):
             st.success("✅ 公的機関・教育機関等のドメインを確認しました。通常モードで生成可能です。")
             ready_to_generate = True
             allow_cache = True
         else:
-            # ⚠️ 警告モード
             st.warning("⚠️ 公的機関以外のドメインが検出されました")
             st.info("""
             **【確認事項】**
             入力されたURLは公的機関のものではありません。著作権および利用規約を遵守するため、以下の条件に同意する場合のみ利用可能です。
-            
             1. **私的利用**（個人での学習・情報収集）に限ること。
             2. 生成された音声を**SNS等で公開・配布しない**こと。
-            3. **キャッシュ機能（0秒再生）は無効**になります（サーバーに保存されません）。
+            3. **キャッシュ機能（0秒再生）は無効**になります。
             """)
             agree = st.checkbox("上記に同意し、自己責任で生成します")
             if agree:
                 ready_to_generate = True
-                allow_cache = False # キャッシュOFF
+                allow_cache = False
             else:
                 ready_to_generate = False
 
@@ -258,7 +253,7 @@ elif input_mode == "PDF (資料アップロード)":
             agree_pdf = st.checkbox("利用規約・著作権を遵守し、自己責任で生成します")
             if agree_pdf:
                 ready_to_generate = True
-                allow_cache = False # キャッシュOFF
+                allow_cache = False
             else:
                 ready_to_generate = False
 
@@ -296,7 +291,7 @@ if ready_to_generate:
                 # 2. 台本作成
                 with st.spinner("✍️ AIが構成を考えています..."):
                     genai.configure(api_key=gemini_key)
-                    # ★ここで診断リストにあった最新モデルを指定
+                    # ★修正：診断リストで確認された「gemini-flash-latest」を指定
                     model = genai.GenerativeModel('gemini-flash-latest')
                     
                     source_statement = ""
@@ -319,9 +314,11 @@ if ready_to_generate:
                     {content_text}
                     """
                     script_text = model.generate_content(prompt).text
-                    # UI修正：デフォルトは閉じた状態で、クリックで開くように設定
-                    with st.expander("📝 生成された台本をチェックする（クリックで開閉）", expanded=False):st.write(script_text)
-                        
+                    
+                    # ★UI修正：台本を「デフォルトで閉じた」状態にする
+                    with st.expander("📝 生成された台本をチェックする（クリックで開閉）", expanded=False):
+                        st.write(script_text)
+
                 # 3. 音声合成
                 with st.spinner("🎙️ 収録中..."):
                     client = OpenAI(api_key=openai_key)
@@ -345,7 +342,13 @@ if ready_to_generate:
                         
                         if voice and text_content:
                             try:
-                                res = client.audio.speech.create(model="tts-1", voice=voice, input=text_content, speed=style_config['speed'])
+                                # ★修正：speedパラメータを追加して話し方を自然に
+                                res = client.audio.speech.create(
+                                    model="tts-1", 
+                                    voice=voice, 
+                                    input=text_content, 
+                                    speed=style_config['speed']
+                                )
                                 combined_audio += res.content
                             except: pass
                 
