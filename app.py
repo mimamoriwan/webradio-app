@@ -101,7 +101,7 @@ def get_style_config(style_key, language):
     config = {
         "prompt_role": f"【役割】A:メインMC B:アシスタント 口調:{language}の標準的ニュース。落ち着いたトーンで。",
         "voice_a": "onyx", "voice_b": "nova", # onyx:低音男性, nova:女性
-        "speed": 1.2
+        "speed": 1.0
     }
     
     if style_key == "jk":
@@ -109,26 +109,26 @@ def get_style_config(style_key, language):
         config = {
             "prompt_role": "【役割】A:元気なJK(ボケ) B:冷静なJK(ツッコミ) 口調:『〜だし！』『マジで？』等のタメ口。短文でテンポよく。",
             "voice_a": "nova", "voice_b": "alloy",
-            "speed": 1.2
+            "speed": 1.15
         }
     elif style_key == "comedian":
         # 芸人は勢い重視で少し速く
         config = {
             "prompt_role": "【役割】A:ボケ(ハイテンション) B:ツッコミ(鋭く) 口調:関西弁や漫才口調。掛け合いを早く。",
             "voice_a": "echo", "voice_b": "onyx",
-            "speed": 1.2
+            "speed": 1.1
         }
     elif style_key == "okayama":
         config = {
             "prompt_role": "【役割】A,B:岡山出身の女性。口調:『〜じゃが』『〜だけぇ』等の岡山弁。親しみやすく。",
             "voice_a": "nova", "voice_b": "alloy",
-            "speed": 1.2
+            "speed": 1.05
         }
     elif style_key == "university":
         config = {
             "prompt_role": "【役割】A:男子大学生 B:女子大学生 口調:敬語混じりのカジュアルな会話。サークル棟での会話風。",
             "voice_a": "fable", "voice_b": "nova", # fable:若め男性
-            "speed": 1.2
+            "speed": 1.1
         }
     return config
 
@@ -291,7 +291,7 @@ if ready_to_generate:
                 # 2. 台本作成
                 with st.spinner("✍️ AIが構成を考えています..."):
                     genai.configure(api_key=gemini_key)
-                    # ★修正：診断リストで確認された「gemini-flash-latest」を指定
+                    # ★ここであなたの環境に合ったモデルを指定
                     model = genai.GenerativeModel('gemini-flash-latest')
                     
                     source_statement = ""
@@ -315,9 +315,12 @@ if ready_to_generate:
                     """
                     script_text = model.generate_content(prompt).text
                     
-                    # ★UI修正：台本を「デフォルトで閉じた」状態にする
-                    with st.expander("📝 生成された台本をチェックする（クリックで開閉）", expanded=False):
-                        st.write(script_text)
+                    # ★UI修正（ここを変更）：チェックボックス式で確実に隠す
+                    st.divider()
+                    show_script = st.checkbox("📝 生成された台本を表示する", value=False)
+                    if show_script:
+                        st.info("以下がAIによって生成された台本です。")
+                        st.text_area("台本内容", script_text, height=400) # スクロール可能なボックス
 
                 # 3. 音声合成
                 with st.spinner("🎙️ 収録中..."):
@@ -342,7 +345,6 @@ if ready_to_generate:
                         
                         if voice and text_content:
                             try:
-                                # ★修正：speedパラメータを追加して話し方を自然に
                                 res = client.audio.speech.create(
                                     model="tts-1", 
                                     voice=voice, 
