@@ -101,7 +101,7 @@ def get_style_config(style_key, language):
     config = {
         "prompt_role": f"【役割】A:メインMC B:アシスタント 口調:{language}の標準的ニュース。落ち着いたトーンで。",
         "voice_a": "onyx", "voice_b": "nova", # onyx:低音男性, nova:女性
-        "speed": 1.5
+        "speed": 1.2
     }
     
     if style_key == "jk":
@@ -109,26 +109,26 @@ def get_style_config(style_key, language):
         config = {
             "prompt_role": "【役割】A:元気なJK(ボケ) B:冷静なJK(ツッコミ) 口調:『〜だし！』『マジで？』等のタメ口。短文でテンポよく。",
             "voice_a": "nova", "voice_b": "alloy",
-            "speed": 1.5
+            "speed": 1.2
         }
     elif style_key == "comedian":
         # 芸人は勢い重視で少し速く
         config = {
             "prompt_role": "【役割】A:ボケ(ハイテンション) B:ツッコミ(鋭く) 口調:関西弁や漫才口調。掛け合いを早く。",
             "voice_a": "echo", "voice_b": "onyx",
-            "speed": 2.0
+            "speed": 1.2
         }
     elif style_key == "okayama":
         config = {
             "prompt_role": "【役割】A,B:岡山出身の女性。口調:『〜じゃが』『〜だけぇ』等の岡山弁。親しみやすく。",
             "voice_a": "nova", "voice_b": "alloy",
-            "speed": 1.5
+            "speed": 1.2
         }
     elif style_key == "university":
         config = {
             "prompt_role": "【役割】A:男子大学生 B:女子大学生 口調:敬語混じりのカジュアルな会話。サークル棟での会話風。",
             "voice_a": "fable", "voice_b": "nova", # fable:若め男性
-            "speed": 1.5
+            "speed": 1.2
         }
     return config
 
