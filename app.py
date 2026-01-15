@@ -298,7 +298,8 @@ if ready_to_generate:
                     {content_text}
                     """
                     script_text = model.generate_content(prompt).text
-                    with st.expander("作成された台本を見る"): st.write(script_text)
+                    # UI修正：デフォルトは閉じた状態で、クリックで開くように設定
+                    with st.expander("📝 生成された台本をチェックする（クリックで開閉）", expanded=False):st.write(script_text)
 
                 # 3. 音声合成
                 with st.spinner("🎙️ 収録中..."):
