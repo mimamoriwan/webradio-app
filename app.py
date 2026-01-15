@@ -97,18 +97,19 @@ def save_to_cache(cache_key, audio_data, source_info, style, lang, title):
     return audio_url
 
 def get_style_config(style_key, language):
+    # 基本設定
     config = {
-        "prompt_role": f"【役割設定】A:メインMC B:アシスタント 口調:{language}の標準的ニュース",
-        "voice_a": "echo", "voice_b": "nova"
-    }
+        "prompt_role": f"【役割設定】A:メインMC B:アシスタント 口調:{language}の標準的ニュース。落ち着いたトーンで。",
+        "voice_a": "echo", "voice_b": "nova", "speed": 1.15}
     if style_key == "jk":
-        config = {"prompt_role": "【役割】A:JK1 B:JK2 口調:タメ口、若者言葉", "voice_a": "shimmer", "voice_b": "nova"}
+        config = {"prompt_role": "【役割】A:JK1 B:JK2 口調:タメ口、若者言葉", "voice_a": "shimmer", "voice_b": "nova", "speed"=1.2}
     elif style_key == "comedian":
-        config = {"prompt_role": "【役割】A:ボケ B:ツッコミ(関西弁) 口調:深夜ラジオ", "voice_a": "echo", "voice_b": "onyx"}
+        config = {"prompt_role": "【役割】A:元気なJK（ボケ） B:元気なJK（ツッコミ、関西弁) 口調:『〜だし！』『マジで？』等のタメ口。短文でテンポ良く。",
+                  "voice_a": "echo", "voice_b": "onyx", "speed": 1.2}
     elif style_key == "okayama":
-        config = {"prompt_role": "【役割】A,B:岡山弁のアナウンサー", "voice_a": "echo", "voice_b": "nova"}
+        config = {"prompt_role": "【役割】A,B:岡山弁のアナウンサー", "voice_a": "echo", "voice_b": "nova", speed"= 1.2}
     elif style_key == "university":
-        config = {"prompt_role": "【役割】A:男子大学生 B:女子大学生 口調:学食トーク", "voice_a": "fable", "voice_b": "alloy"}
+        config = {"prompt_role": "【役割】A:男子大学生 B:女子大学生 口調:学食トーク", "voice_a": "fable", "voice_b": "alloy", "speed"=1.2}
     return config
 
 # コンテンツ取得関数（URL用）
@@ -324,7 +325,7 @@ if ready_to_generate:
                         
                         if voice and text_content:
                             try:
-                                res = client.audio.speech.create(model="tts-1", voice=voice, input=text_content)
+                                res = client.audio.speech.create(model="tts-1", voice=voice, input=text_content, speed=style_config['speed'])
                                 combined_audio += res.content
                             except: pass
                 
