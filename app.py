@@ -99,17 +99,37 @@ def save_to_cache(cache_key, audio_data, source_info, style, lang, title):
 def get_style_config(style_key, language):
     # 基本設定
     config = {
-        "prompt_role": f"【役割設定】A:メインMC B:アシスタント 口調:{language}の標準的ニュース。落ち着いたトーンで。",
-        "voice_a": "echo", "voice_b": "nova", "speed": 1.15}
+        "prompt_role": f"【役割】A:メインMC B:アシスタント 口調:{language}の標準的ニュース。落ち着いたトーンで。",
+        "voice_a": "onyx", "voice_b": "nova", # onyx:低音男性, nova:女性
+        "speed": 1.0
+    }
+    
     if style_key == "jk":
-        config = {"prompt_role": "【役割】A:JK1 B:JK2 口調:タメ口、若者言葉", "voice_a": "shimmer", "voice_b": "nova", "speed"=1.2}
+        # JKは早口（1.15倍）にし、shimmer(ハスキー)をやめてalloy(中性)を採用
+        config = {
+            "prompt_role": "【役割】A:元気なJK(ボケ) B:冷静なJK(ツッコミ) 口調:『〜だし！』『マジで？』等のタメ口。短文でテンポよく。",
+            "voice_a": "nova", "voice_b": "alloy",
+            "speed": 1.15
+        }
     elif style_key == "comedian":
-        config = {"prompt_role": "【役割】A:元気なJK（ボケ） B:元気なJK（ツッコミ、関西弁) 口調:『〜だし！』『マジで？』等のタメ口。短文でテンポ良く。",
-                  "voice_a": "echo", "voice_b": "onyx", "speed": 1.2}
+        # 芸人は勢い重視で少し速く
+        config = {
+            "prompt_role": "【役割】A:ボケ(ハイテンション) B:ツッコミ(鋭く) 口調:関西弁や漫才口調。掛け合いを早く。",
+            "voice_a": "echo", "voice_b": "onyx",
+            "speed": 1.1
+        }
     elif style_key == "okayama":
-        config = {"prompt_role": "【役割】A,B:岡山弁のアナウンサー", "voice_a": "echo", "voice_b": "nova", speed"= 1.2}
+        config = {
+            "prompt_role": "【役割】A,B:岡山出身の女性。口調:『〜じゃが』『〜だけぇ』等の岡山弁。親しみやすく。",
+            "voice_a": "nova", "voice_b": "alloy",
+            "speed": 1.05
+        }
     elif style_key == "university":
-        config = {"prompt_role": "【役割】A:男子大学生 B:女子大学生 口調:学食トーク", "voice_a": "fable", "voice_b": "alloy", "speed"=1.2}
+        config = {
+            "prompt_role": "【役割】A:男子大学生 B:女子大学生 口調:敬語混じりのカジュアルな会話。サークル棟での会話風。",
+            "voice_a": "fable", "voice_b": "nova", # fable:若め男性
+            "speed": 1.1
+        }
     return config
 
 # コンテンツ取得関数（URL用）
