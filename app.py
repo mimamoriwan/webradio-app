@@ -276,7 +276,7 @@ if ready_to_generate:
                 with st.spinner("✍️ AIが構成を考えています..."):
                     genai.configure(api_key=gemini_key)
                     # ★ここで診断リストにあった最新モデルを指定
-                    model = genai.GenerativeModel('gemini-2.0-flash')
+                    model = genai.GenerativeModel('gemini-flash-latest')
                     
                     source_statement = ""
                     if input_mode == "PDF (資料アップロード)":
