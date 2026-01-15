@@ -12,32 +12,8 @@ from urllib.parse import urlparse, parse_qs
 import yt_dlp
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
-import PyPDF2  # PDF用に追加
+import PyPDF2
 import io
-# ==========================================
-# 🚑 緊急診断コード（ここから）
-# ==========================================
-st.divider()
-st.error("🚑 診断モード起動中")
-
-# 1. ライブラリのバージョンを確認
-try:
-    st.write(f"**google-generativeai バージョン:** `{genai.__version__}`")
-except:
-    st.write("**google-generativeai バージョン:** 取得不可")
-
-# 2. 実際に利用可能なモデル一覧を全表示
-st.write("**▼ この環境で使えるモデル一覧:**")
-try:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    for m in genai.list_models():
-        # 生成可能なモデルだけを表示
-        if 'generateContent' in m.supported_generation_methods:
-            st.code(m.name) # コピーしやすいようにコードブロックで表示
-except Exception as e:
-    st.error(f"モデル一覧の取得に失敗: {e}")
-
-st.divider()
 
 # ---------------------------
 # 基本設定
@@ -138,7 +114,7 @@ def get_style_config(style_key, language):
 # コンテンツ取得関数（URL用）
 def fetch_content_from_url(url, openai_api_key):
     if "youtube.com" in url or "youtu.be" in url:
-        # YouTube処理（省略せずに実装）
+        # YouTube処理
         parsed = urlparse(url)
         if "youtube.com" in parsed.netloc: video_id = parse_qs(parsed.query).get("v", [None])[0]
         elif "youtu.be" in parsed.netloc: video_id = parsed.path[1:]
@@ -197,10 +173,10 @@ st.markdown("---")
 input_mode = st.radio("入力ソースを選択", ["URL (記事・動画)", "PDF (資料アップロード)"], horizontal=True)
 
 content_text = ""
-source_id = "" # キャッシュキーの元になるもの
+source_id = ""
 title_str = "ラジオ番組"
-allow_cache = True # キャッシュして良いかどうか（デフォルトTrue）
-ready_to_generate = False # 生成ボタンを押せるかどうか
+allow_cache = True
+ready_to_generate = False
 
 # ---------------------------
 # モードA：URL入力
@@ -229,7 +205,7 @@ if input_mode == "URL (記事・動画)":
             agree = st.checkbox("上記に同意し、自己責任で生成します")
             if agree:
                 ready_to_generate = True
-                allow_cache = False # ★強制的にキャッシュOFF
+                allow_cache = False # キャッシュOFF
             else:
                 ready_to_generate = False
 
@@ -240,7 +216,7 @@ elif input_mode == "PDF (資料アップロード)":
     uploaded_file = st.file_uploader("PDFファイルをアップロード", type="pdf")
     
     if uploaded_file:
-        source_id = uploaded_file.name + str(uploaded_file.size) # ファイル名+サイズで識別
+        source_id = uploaded_file.name + str(uploaded_file.size)
         title_str = uploaded_file.name
         
         st.markdown("**この資料の種類を選択してください：**")
@@ -261,7 +237,7 @@ elif input_mode == "PDF (資料アップロード)":
             agree_pdf = st.checkbox("利用規約・著作権を遵守し、自己責任で生成します")
             if agree_pdf:
                 ready_to_generate = True
-                allow_cache = False # ★強制的にキャッシュOFF
+                allow_cache = False # キャッシュOFF
             else:
                 ready_to_generate = False
 
@@ -275,7 +251,7 @@ if ready_to_generate:
         style_config = get_style_config(style_key, language)
         cache_key = generate_cache_key(source_id, style_key, language)
         
-        # キャッシュ確認（allow_cacheがTrueの時だけ見に行く）
+        # キャッシュ確認
         cached_data = None
         if allow_cache:
             cached_data = check_cache(cache_key)
@@ -299,9 +275,9 @@ if ready_to_generate:
                 # 2. 台本作成
                 with st.spinner("✍️ AIが構成を考えています..."):
                     genai.configure(api_key=gemini_key)
-                    model = genai.GenerativeModel('gemini-1.5-flash') # モデル名修正
+                    # ★ここで診断リストにあった最新モデルを指定
+                    model = genai.GenerativeModel('gemini-2.0-flash')
                     
-                    # 出典の明記を指示に追加
                     source_statement = ""
                     if input_mode == "PDF (資料アップロード)":
                         source_statement = f"冒頭で『この放送は、資料 {title_str} を元にAIが作成しました』と明言すること。"
@@ -356,13 +332,11 @@ if ready_to_generate:
                 else:
                     # 4. 保存と再生
                     if allow_cache:
-                        # 通常モード：Firebaseに保存
                         with st.spinner("💾 クラウドに保存中..."):
                             audio_url = save_to_cache(cache_key, combined_audio, source_id, style_key, language, title_str)
                         st.success("🎉 完成！")
                         st.audio(audio_url, format="audio/mp3")
                     else:
-                        # ⚠️ 私的利用モード：保存せずにその場だけで再生
                         st.success("🎉 完成！（保存なしモード）")
                         st.warning("⚠️ この音声は保存されていません。ページを閉じると消えます。")
                         st.audio(combined_audio, format="audio/mp3")
