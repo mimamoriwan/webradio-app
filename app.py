@@ -13,12 +13,32 @@ import yt_dlp
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
 import PyPDF2
-import io # ★これがiPhone対応の鍵です
+import io # iPhone対応用
 
 # ---------------------------
 # 基本設定
 # ---------------------------
 st.set_page_config(page_title="WebRadio", page_icon="📻")
+
+# ==========================================
+# 🎨 UIクリーニング（余計なアイコンを消す）
+# ==========================================
+hide_streamlit_style = """
+            <style>
+            /* 右上のハンバーガーメニューを消す */
+            #MainMenu {visibility: hidden;}
+            /* フッター（Made with Streamlit）を消す */
+            footer {visibility: hidden;}
+            /* ヘッダー（色の帯やデプロイボタン）を消す */
+            header {visibility: hidden;}
+            /* 右下のボタンやビューワーバッジを消す */
+            .stDeployButton {display:none;}
+            [data-testid="stToolbar"] {visibility: hidden !important;}
+            [data-testid="stDecoration"] {visibility: hidden !important;}
+            [data-testid="stStatusWidget"] {visibility: hidden !important;}
+            </style>
+            """
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 # ★設定エリア
 BUCKET_NAME = "webradio-app1.firebasestorage.app"
@@ -357,7 +377,7 @@ if ready_to_generate:
                         st.success("🎉 完成！（保存なしモード）")
                         st.warning("⚠️ この音声は保存されていません。ページを閉じると消えます。")
                         
-                        # ★ここが修正点：iPhone用にio.BytesIOでラップする
+                        # iPhone対策（io.BytesIOでラップ）
                         st.audio(io.BytesIO(combined_audio), format="audio/mp3")
 
                     # 台本表示
