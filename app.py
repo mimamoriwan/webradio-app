@@ -13,7 +13,8 @@ import yt_dlp
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
 import PyPDF2
-import io # iPhone対応用
+import io
+import base64 # ★追加：iPhone対策の切り札
 
 # ---------------------------
 # 基本設定
@@ -25,13 +26,9 @@ st.set_page_config(page_title="WebRadio", page_icon="📻")
 # ==========================================
 hide_streamlit_style = """
             <style>
-            /* 右上のハンバーガーメニューを消す */
             #MainMenu {visibility: hidden;}
-            /* フッター（Made with Streamlit）を消す */
             footer {visibility: hidden;}
-            /* ヘッダー（色の帯やデプロイボタン）を消す */
             header {visibility: hidden;}
-            /* 右下のボタンやビューワーバッジを消す */
             .stDeployButton {display:none;}
             [data-testid="stToolbar"] {visibility: hidden !important;}
             [data-testid="stDecoration"] {visibility: hidden !important;}
@@ -369,16 +366,26 @@ if ready_to_generate:
                 else:
                     # 4. 完了表示
                     if allow_cache:
+                        # 保存ありモード（URL再生なのでiPhoneもOK）
                         with st.spinner("💾 クラウドに保存中..."):
                             audio_url = save_to_cache(cache_key, combined_audio, source_id, style_key, language, title_str)
                         st.success("🎉 完成！")
                         st.audio(audio_url, format="audio/mp3")
                     else:
+                        # 保存なしモード（iPhoneでコケる鬼門）
                         st.success("🎉 完成！（保存なしモード）")
                         st.warning("⚠️ この音声は保存されていません。ページを閉じると消えます。")
                         
-                        # iPhone対策（io.BytesIOでラップ）
-                        st.audio(io.BytesIO(combined_audio), format="audio/mp3")
+                        # ★ここが最終兵器：Base64埋め込みプレーヤー
+                        # データを文字列化してHTMLに直接書き込むことで、iPhoneでも強制的に再生させる
+                        b64_audio = base64.b64encode(combined_audio).decode()
+                        audio_html = f"""
+                        <audio controls style="width: 100%;">
+                            <source src="data:audio/mp3;base64,{b64_audio}" type="audio/mp3">
+                            お使いのブラウザは音声再生に対応していません。
+                        </audio>
+                        """
+                        st.markdown(audio_html, unsafe_allow_html=True)
 
                     # 台本表示
                     st.divider()
