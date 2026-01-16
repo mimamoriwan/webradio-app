@@ -291,7 +291,7 @@ if ready_to_generate:
                 # 2. 台本作成
                 with st.spinner("✍️ AIが構成を考えています..."):
                     genai.configure(api_key=gemini_key)
-                    # ★ここであなたの環境に合ったモデルを指定
+                    # ★修正済み：あなたの環境で動作する最新安定版
                     model = genai.GenerativeModel('gemini-flash-latest')
                     
                     source_statement = ""
@@ -315,12 +315,9 @@ if ready_to_generate:
                     """
                     script_text = model.generate_content(prompt).text
                     
-                    # ★UI修正（ここを変更）：チェックボックス式で確実に隠す
-                    st.divider()
-                    show_script = st.checkbox("📝 生成された台本を表示する", value=False)
-                    if show_script:
-                        st.info("以下がAIによって生成された台本です。")
-                        st.text_area("台本内容", script_text, height=400) # スクロール可能なボックス
+                    # ★UI修正：クリックで開閉するアコーディオン形式
+                    with st.expander("📝 生成された台本をチェックする（クリックで開閉）", expanded=False):
+                        st.write(script_text)
 
                 # 3. 音声合成
                 with st.spinner("🎙️ 収録中..."):
