@@ -13,7 +13,7 @@ import yt_dlp
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
 import PyPDF2
-import io
+import io # ★これがiPhone対応の鍵です
 
 # ---------------------------
 # 基本設定
@@ -347,7 +347,7 @@ if ready_to_generate:
                 if len(combined_audio) == 0:
                     st.error("⚠️ 音声生成に失敗しました。")
                 else:
-                    # 4. 完了表示（UI修正：プレイヤーを上に、台本を下に）
+                    # 4. 完了表示
                     if allow_cache:
                         with st.spinner("💾 クラウドに保存中..."):
                             audio_url = save_to_cache(cache_key, combined_audio, source_id, style_key, language, title_str)
@@ -356,9 +356,11 @@ if ready_to_generate:
                     else:
                         st.success("🎉 完成！（保存なしモード）")
                         st.warning("⚠️ この音声は保存されていません。ページを閉じると消えます。")
-                        st.audio(combined_audio, format="audio/mp3")
+                        
+                        # ★ここが修正点：iPhone用にio.BytesIOでラップする
+                        st.audio(io.BytesIO(combined_audio), format="audio/mp3")
 
-                    # ★ここで最後に台本を表示（デフォルトは閉じる）
+                    # 台本表示
                     st.divider()
                     with st.expander("📝 生成された台本をチェックする（クリックで開閉）", expanded=False):
                         st.write(script_text)
