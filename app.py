@@ -52,11 +52,9 @@ if firebase_admin._apps:
 # ---------------------------
 # 関数定義エリア
 # ---------------------------
-# ★安全対策：ドメイン判定関数
 def is_safe_domain(url):
     try:
         domain = urlparse(url).netloc
-        # ホワイトリスト（安全とみなすドメイン）
         safe_suffixes = ['.go.jp', '.lg.jp', '.ac.jp', '.ed.jp', '.or.jp']
         for suffix in safe_suffixes:
             if domain.endswith(suffix):
@@ -78,13 +76,11 @@ def check_cache(cache_key):
 
 def save_to_cache(cache_key, audio_data, source_info, style, lang, title):
     if not firebase_admin._apps: return None
-    # Firebase Storageへ保存
     blob = bucket.blob(f"audio/{cache_key}.mp3")
     blob.upload_from_string(audio_data, content_type="audio/mp3")
     blob.make_public()
     audio_url = blob.public_url
 
-    # Firestoreへメタデータ保存
     doc_ref = db.collection('radios').document(cache_key)
     doc_ref.set({
         'source': source_info,
@@ -97,22 +93,19 @@ def save_to_cache(cache_key, audio_data, source_info, style, lang, title):
     return audio_url
 
 def get_style_config(style_key, language):
-    # 基本設定
     config = {
         "prompt_role": f"【役割】A:メインMC B:アシスタント 口調:{language}の標準的ニュース。落ち着いたトーンで。",
-        "voice_a": "onyx", "voice_b": "nova", # onyx:低音男性, nova:女性
+        "voice_a": "onyx", "voice_b": "nova",
         "speed": 1.0
     }
     
     if style_key == "jk":
-        # JKは早口（1.15倍）にし、shimmer(ハスキー)をやめてalloy(中性)を採用
         config = {
             "prompt_role": "【役割】A:元気なJK(ボケ) B:冷静なJK(ツッコミ) 口調:『〜だし！』『マジで？』等のタメ口。短文でテンポよく。",
             "voice_a": "nova", "voice_b": "alloy",
             "speed": 1.15
         }
     elif style_key == "comedian":
-        # 芸人は勢い重視で少し速く
         config = {
             "prompt_role": "【役割】A:ボケ(ハイテンション) B:ツッコミ(鋭く) 口調:関西弁や漫才口調。掛け合いを早く。",
             "voice_a": "echo", "voice_b": "onyx",
@@ -127,12 +120,11 @@ def get_style_config(style_key, language):
     elif style_key == "university":
         config = {
             "prompt_role": "【役割】A:男子大学生 B:女子大学生 口調:敬語混じりのカジュアルな会話。サークル棟での会話風。",
-            "voice_a": "fable", "voice_b": "nova", # fable:若め男性
+            "voice_a": "fable", "voice_b": "nova",
             "speed": 1.1
         }
     return config
 
-# コンテンツ取得関数（URL用）
 def fetch_content_from_url(url, openai_api_key):
     if "youtube.com" in url or "youtu.be" in url:
         parsed = urlparse(url)
@@ -155,14 +147,13 @@ def fetch_content_from_url(url, openai_api_key):
             return f"【Web記事：{title}】\n{' '.join([p.text for p in soup.find_all('p')])[:5000]}..."
         except: return f"Error: {url}"
 
-# PDF読み込み関数
 def extract_text_from_pdf(uploaded_file):
     try:
         reader = PyPDF2.PdfReader(uploaded_file)
         text = ""
         for page in reader.pages:
             text += page.extract_text()
-        return f"【PDF資料：{uploaded_file.name}】\n{text[:10000]}..." # 文字数制限
+        return f"【PDF資料：{uploaded_file.name}】\n{text[:10000]}..."
     except Exception as e:
         return f"PDF読み込みエラー: {e}"
 
@@ -188,7 +179,7 @@ with col2:
     style_key = st.selectbox("番組の雰囲気", options=list(style_options.keys()), format_func=lambda x: style_options[x])
 st.markdown("---")
 
-# ★入力モード切替
+# 入力モード切替
 input_mode = st.radio("入力ソースを選択", ["URL (記事・動画)", "PDF (資料アップロード)"], horizontal=True)
 
 content_text = ""
@@ -197,9 +188,7 @@ title_str = "ラジオ番組"
 allow_cache = True
 ready_to_generate = False
 
-# ---------------------------
 # モードA：URL入力
-# ---------------------------
 if input_mode == "URL (記事・動画)":
     url_input = st.text_input("記事または動画のURL", placeholder="https://...")
     
@@ -225,9 +214,7 @@ if input_mode == "URL (記事・動画)":
             else:
                 ready_to_generate = False
 
-# ---------------------------
 # モードB：PDFアップロード
-# ---------------------------
 elif input_mode == "PDF (資料アップロード)":
     uploaded_file = st.file_uploader("PDFファイルをアップロード", type="pdf")
     
@@ -257,9 +244,7 @@ elif input_mode == "PDF (資料アップロード)":
             else:
                 ready_to_generate = False
 
-# ---------------------------
-# 生成ボタンと実行ロジック
-# ---------------------------
+# 生成ロジック
 if ready_to_generate:
     btn_label = "🎙️ 番組を再生する" if allow_cache else "🎙️ 番組を再生する（保存なしモード）"
     
@@ -277,7 +262,7 @@ if ready_to_generate:
             st.audio(cached_data['audio_url'], format="audio/mp3")
         
         else:
-            # 新規生成プロセス
+            # 新規生成
             try:
                 # 1. コンテンツ取得
                 with st.spinner("🐢 資料を読み込んでいます..."):
@@ -291,22 +276,23 @@ if ready_to_generate:
                 # 2. 台本作成
                 with st.spinner("✍️ AIが構成を考えています..."):
                     genai.configure(api_key=gemini_key)
-                    # ★修正済み：あなたの環境で動作する最新安定版
                     model = genai.GenerativeModel('gemini-flash-latest')
                     
                     source_statement = ""
                     if input_mode == "PDF (資料アップロード)":
                         source_statement = f"冒頭で『この放送は、資料 {title_str} を元にAIが作成しました』と明言すること。"
                     
+                    # プロンプト：記号を使わないよう指示を強化
                     prompt = f"""
                     以下の情報を元にラジオ台本を作成してください。
                     {style_config['prompt_role']}
                     {source_statement}
                     
                     【重要：出力形式】
-                    - 表形式は禁止。会話文のみ箇条書き。
+                    - 各行は「A: セリフ」「B: セリフ」の形式で書くこと。
+                    - 箇条書きの記号（・や*）は使わないこと。
+                    - ト書き（笑いや拍手など）は書かないこと。
                     - 専門用語はわかりやすく噛み砕くこと。
-                    - 事実関係（数字・日付）は正確に。
                     
                     【構成】OP→本題→ED。5分程度。
                     
@@ -315,7 +301,7 @@ if ready_to_generate:
                     """
                     script_text = model.generate_content(prompt).text
                     
-                    # ★UI修正：クリックで開閉するアコーディオン形式
+                    # ★UI修正：確実にインデントしてアコーディオン内に入れる
                     with st.expander("📝 生成された台本をチェックする（クリックで開閉）", expanded=False):
                         st.write(script_text)
 
@@ -328,17 +314,33 @@ if ready_to_generate:
                     for line in lines:
                         line = line.strip()
                         if not line: continue
-                        parts = re.split('[:：]', line, 1)
-                        if len(parts) < 2: continue
                         
-                        speaker_part = parts[0].strip()
-                        text_content = parts[1].strip()
+                        # ★修正：クリーニング処理（箇条書き記号や**を削除）
+                        clean_line = re.sub(r'^[\*\-・\s]+', '', line) # 先頭の記号を削除
+                        clean_line = clean_line.replace('**', '') # マークダウンの太字を削除
+                        
+                        parts = re.split('[:：]', clean_line, 1)
                         
                         voice = None
-                        if "A" in speaker_part or "Ａ" in speaker_part:
+                        text_content = ""
+
+                        if len(parts) >= 2:
+                            # 「A: セリフ」の形式になっている場合
+                            speaker_part = parts[0].strip()
+                            text_content = parts[1].strip()
+                            
+                            if "A" in speaker_part or "Ａ" in speaker_part:
+                                voice = style_config['voice_a']
+                            elif "B" in speaker_part or "Ｂ" in speaker_part:
+                                voice = style_config['voice_b']
+                            else:
+                                # AでもBでもない場合（ナレーション等）はAの声で読む
+                                voice = style_config['voice_a']
+                                text_content = clean_line
+                        else:
+                            # 「:」がない行も読み飛ばさず、Aの声でそのまま読む（重要！）
                             voice = style_config['voice_a']
-                        elif "B" in speaker_part or "Ｂ" in speaker_part:
-                            voice = style_config['voice_b']
+                            text_content = clean_line
                         
                         if voice and text_content:
                             try:
@@ -354,7 +356,6 @@ if ready_to_generate:
                 if len(combined_audio) == 0:
                     st.error("⚠️ 音声生成に失敗しました。")
                 else:
-                    # 4. 保存と再生
                     if allow_cache:
                         with st.spinner("💾 クラウドに保存中..."):
                             audio_url = save_to_cache(cache_key, combined_audio, source_id, style_key, language, title_str)
