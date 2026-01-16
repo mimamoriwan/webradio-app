@@ -282,7 +282,6 @@ if ready_to_generate:
                     if input_mode == "PDF (資料アップロード)":
                         source_statement = f"冒頭で『この放送は、資料 {title_str} を元にAIが作成しました』と明言すること。"
                     
-                    # プロンプト：記号を使わないよう指示を強化
                     prompt = f"""
                     以下の情報を元にラジオ台本を作成してください。
                     {style_config['prompt_role']}
@@ -300,10 +299,6 @@ if ready_to_generate:
                     {content_text}
                     """
                     script_text = model.generate_content(prompt).text
-                    
-                    # ★UI修正：確実にインデントしてアコーディオン内に入れる
-                    with st.expander("📝 生成された台本をチェックする（クリックで開閉）", expanded=False):
-                        st.write(script_text)
 
                 # 3. 音声合成
                 with st.spinner("🎙️ 収録中..."):
@@ -315,9 +310,9 @@ if ready_to_generate:
                         line = line.strip()
                         if not line: continue
                         
-                        # ★修正：クリーニング処理（箇条書き記号や**を削除）
-                        clean_line = re.sub(r'^[\*\-・\s]+', '', line) # 先頭の記号を削除
-                        clean_line = clean_line.replace('**', '') # マークダウンの太字を削除
+                        # クリーニング処理
+                        clean_line = re.sub(r'^[\*\-・\s]+', '', line)
+                        clean_line = clean_line.replace('**', '')
                         
                         parts = re.split('[:：]', clean_line, 1)
                         
@@ -325,20 +320,16 @@ if ready_to_generate:
                         text_content = ""
 
                         if len(parts) >= 2:
-                            # 「A: セリフ」の形式になっている場合
                             speaker_part = parts[0].strip()
                             text_content = parts[1].strip()
-                            
                             if "A" in speaker_part or "Ａ" in speaker_part:
                                 voice = style_config['voice_a']
                             elif "B" in speaker_part or "Ｂ" in speaker_part:
                                 voice = style_config['voice_b']
                             else:
-                                # AでもBでもない場合（ナレーション等）はAの声で読む
                                 voice = style_config['voice_a']
                                 text_content = clean_line
                         else:
-                            # 「:」がない行も読み飛ばさず、Aの声でそのまま読む（重要！）
                             voice = style_config['voice_a']
                             text_content = clean_line
                         
@@ -356,6 +347,7 @@ if ready_to_generate:
                 if len(combined_audio) == 0:
                     st.error("⚠️ 音声生成に失敗しました。")
                 else:
+                    # 4. 完了表示（UI修正：プレイヤーを上に、台本を下に）
                     if allow_cache:
                         with st.spinner("💾 クラウドに保存中..."):
                             audio_url = save_to_cache(cache_key, combined_audio, source_id, style_key, language, title_str)
@@ -365,6 +357,11 @@ if ready_to_generate:
                         st.success("🎉 完成！（保存なしモード）")
                         st.warning("⚠️ この音声は保存されていません。ページを閉じると消えます。")
                         st.audio(combined_audio, format="audio/mp3")
+
+                    # ★ここで最後に台本を表示（デフォルトは閉じる）
+                    st.divider()
+                    with st.expander("📝 生成された台本をチェックする（クリックで開閉）", expanded=False):
+                        st.write(script_text)
 
             except Exception as e:
                 st.error(f"エラーが発生しました: {e}")
