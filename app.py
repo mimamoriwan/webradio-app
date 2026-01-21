@@ -15,6 +15,7 @@ from firebase_admin import credentials, firestore, storage
 import PyPDF2
 import io
 import base64 # ★追加：iPhone対策の切り札
+import audio_mixer # ★これを追加！
 
 # ---------------------------
 # 基本設定
@@ -318,10 +319,12 @@ if ready_to_generate:
                     script_text = model.generate_content(prompt).text
 
                 # 3. 音声合成
-                with st.spinner("🎙️ 収録中..."):
+                with st.spinner("🎙️ 収録中（間を調整しています）..."):
                     client = OpenAI(api_key=openai_key)
                     lines = script_text.split('\n')
-                    combined_audio = b""
+                    
+                    # ミキサーに渡すためのデータリストを作成
+                    script_data_list = []
                     
                     for line in lines:
                         line = line.strip()
@@ -336,6 +339,7 @@ if ready_to_generate:
                         voice = None
                         text_content = ""
 
+                        # 話者判定と声の割り当て
                         if len(parts) >= 2:
                             speaker_part = parts[0].strip()
                             text_content = parts[1].strip()
@@ -350,20 +354,35 @@ if ready_to_generate:
                             voice = style_config['voice_a']
                             text_content = clean_line
                         
+                        # リストに追加
                         if voice and text_content:
-                            try:
-                                res = client.audio.speech.create(
-                                    model="tts-1", 
-                                    voice=voice, 
-                                    input=text_content, 
-                                    speed=style_config['speed']
-                                )
-                                combined_audio += res.content
-                            except: pass
-                
-                if len(combined_audio) == 0:
-                    st.error("⚠️ 音声生成に失敗しました。")
-                else:
+                            script_data_list.append({
+                                "voice": voice,
+                                "text": text_content
+                            })
+
+                    # ★ここでaudio_mixerを呼び出す！
+                    if script_data_list:
+                        try:
+                            # ミキサー関数を実行（ファイルが生成される）
+                            output_filename = audio_mixer.combine_audio_with_ma(
+                                script_data_list, 
+                                client, 
+                                speed=style_config['speed']
+                            )
+                            
+                            # 生成されたファイルを読み込んで combined_audio に入れる
+                            with open(output_filename, "rb") as f:
+                                combined_audio = f.read()
+                                
+                            # 一時ファイルは削除してもOK（今回は残しておいても上書きされるので放置でも可）
+                            
+                        except Exception as e:
+                            st.error(f"Mixing Error: {e}")
+                            combined_audio = b""
+                    else:
+                        combined_audio = b""
+                        
                     # 4. 完了表示
                     if allow_cache:
                         # 保存ありモード（URL再生なのでiPhoneもOK）
