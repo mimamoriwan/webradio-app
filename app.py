@@ -289,7 +289,21 @@ if ready_to_generate:
                         if "【Web記事：" in content_text:
                             title_str = content_text.split("【Web記事：")[1].split("】")[0]
                     else:
-                        content_text = extract_text_from_pdf(uploaded_file)
+                        # ▼▼▼【ここが修正版！】▼▼▼
+                        # PDFの文字数チェック機能を追加
+                        pdf_reader = PyPDF2.PdfReader(uploaded_file)
+                        text = ""
+                        for page in pdf_reader.pages:
+                            text += page.extract_text()
+                        
+                        st.info(f"🔍 デバッグ: PDFから読み取れた文字数は **{len(text)} 文字** です")
+                        
+                        if len(text) == 0:
+                            st.error("⚠️ エラー: 文字が読み取れませんでした。このPDFは「画像（スキャンデータ）」ではありませんか？ 現在の仕組みでは画像PDFは読めません。")
+                            st.stop() # ここで強制ストップ
+                        
+                        content_text = f"【PDF資料：{uploaded_file.name}】\n{text[:10000]}..."
+                        # ▲▲▲【ここまで】▲▲▲
                 
                 # 2. 台本作成
                 with st.spinner("✍️ AIが構成を考えています..."):
