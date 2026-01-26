@@ -308,7 +308,7 @@ if ready_to_generate:
                 # 2. 台本作成
                 with st.spinner("✍️ AIが構成を考えています..."):
                     genai.configure(api_key=gemini_key)
-                    model = genai.GenerativeModel('gemini-flash-latest')
+                    model = genai.GenerativeModel('gemini-2.5-flash')
                     
                     source_statement = ""
                     if input_mode == "PDF (資料アップロード)":
@@ -407,7 +407,7 @@ if ready_to_generate:
                     else:
                         # 保存なしモード（iPhoneでコケる鬼門）
                         st.success("🎉 完成！（保存なしモード）")
-                        st.warning("⚠️ この音声は保存されていません。ページを閉じると消えます。")
+                        st.warning("⚠️ 著作権保護のためサーバーには保存されません。ダウンロードデータは**「私的利用（個人での視聴）」**に留め、**第三者への配布やSNSへのアップロードは絶対に行わないでください。**")
                         
                         # ★ここが最終兵器：Base64埋め込みプレーヤー
                         # データを文字列化してHTMLに直接書き込むことで、iPhoneでも強制的に再生させる
