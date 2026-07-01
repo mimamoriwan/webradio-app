@@ -206,3 +206,12 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 .streamlit/secrets.toml
+
+# Local OS files
+.DS_Store
+
+# Generated audio outputs
+radio_output.mp3
+final_episode.mp3
+tmp_audio/
+outputs/
