@@ -7,6 +7,7 @@ import time
 import os
 import hashlib
 import re
+import json
 from youtube_transcript_api import YouTubeTranscriptApi
 from urllib.parse import urlparse, parse_qs
 import yt_dlp
@@ -116,7 +117,7 @@ def get_style_config(style_key, language):
         "voice_a": "onyx", "voice_b": "nova",
         "speed": 1.0
     }
-    
+
     if style_key == "jk":
         config = {
             "prompt_role": "【役割】A:元気なJK(ボケ) B:冷静なJK(ツッコミ) 口調:『〜だし！』『マジで？』等のタメ口。短文でテンポよく。",
@@ -175,8 +176,188 @@ def extract_text_from_pdf(uploaded_file):
     except Exception as e:
         return f"PDF読み込みエラー: {e}"
 
+def is_content_fetch_error(content_text):
+    if not content_text:
+        return True
+    error_markers = ["Error:", "PDF読み込みエラー", "字幕が見つかりませんでした。"]
+    return any(content_text.startswith(marker) for marker in error_markers)
+
+def parse_json_response(response_text):
+    cleaned = response_text.strip()
+    cleaned = cleaned.replace("```json", "").replace("```", "").strip()
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+        if not match:
+            raise ValueError("JSON not found")
+        return json.loads(match.group(0))
+
+def generate_intro_outro(model, content_text, program_name, tone, language):
+    prompt = f"""
+    以下の参考本文から、ラジオ番組「ミマモリワン」で紹介する今回のテーマと短い紹介文だけを抽出してください。
+
+    【JSON形式】
+    {{
+      "theme": "今回のテーマを20文字程度で",
+      "summary": "今回のテーマについて、リスナーに向けた短い紹介文を80文字程度で"
+    }}
+
+    【ルール】
+    - 出力はJSONのみ。Markdownは使わないこと。
+    - 本編台本、冒頭挨拶、締め挨拶は作らないこと。
+    - 日本語で自然に書くこと。
+
+    【参考本文】
+    {content_text[:8000]}
+    """
+    response_text = model.generate_content(prompt).text
+    data = parse_json_response(response_text)
+    theme = str(data.get("theme", "")).strip() or "今回のテーマ"
+    summary = str(data.get("summary", "")).strip() or "日常の中で気になる話題を、少し深く見つめていきます。"
+
+    intro_text = f"""
+    みなさんこんにちは。ミマモリワンのラジオのお時間がやってきました。
+
+    この番組では、DJのヤスシが日常生活の中で気になったニュースや新聞記事などについて、独自の調査を踏まえて深掘りしていきます。
+
+    今日の放送が、あなたの経験や知識をちょっとだけ豊かにするきっかけになればうれしいです。
+
+    さて、今回のミマモリワンでは、{theme}についてご紹介します。
+
+    {summary}
+
+    それでは、本編をお楽しみください。
+    """.strip()
+
+    outro_text = """
+    さて、本日のミマモリワンはいかがでしたでしょうか。
+
+    今回の放送が、あなたにとって少しでもお役に立つ番組となっていればうれしいです。
+
+    今後も、日常生活の中で気になったニュースや話題を、わかりやすく深掘りしてお届けしていきます。
+
+    それでは、また次回をお楽しみに。
+    """.strip()
+
+    return intro_text, outro_text
+
+def write_tts_mp3(client_openai, text, output_path, voice="alloy", speed=1.0):
+    output_dir = os.path.dirname(output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
+    response = client_openai.audio.speech.create(
+        model="tts-1",
+        voice=voice,
+        input=text,
+        speed=speed
+    )
+    with open(output_path, "wb") as f:
+        f.write(response.content)
+    return output_path
+
+def write_uploaded_audio_file(uploaded_file, output_path):
+    output_dir = os.path.dirname(output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
+    with open(output_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    return output_path
+
+def login_user(email, password):
+    # secrets.toml からAPIキーを取得
+    api_key = st.secrets.get("FIREBASE_WEB_API_KEY")
+    if not api_key:
+        # 念のため firebase セクションも探すなどのフォールバックがあってもよいが
+        # 今回は指定通り FIREBASE_WEB_API_KEY を使用
+        return None
+
+    request_url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={api_key}"
+    payload = {"email": email, "password": password, "returnSecureToken": True}
+
+    try:
+        response = requests.post(request_url, json=payload)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return None
+    except:
+        return None
+
+def register_user(email, password):
+    # secrets.toml からAPIキーを取得
+    api_key = st.secrets.get("FIREBASE_WEB_API_KEY")
+    if not api_key:
+        return None
+
+    request_url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={api_key}"
+    payload = {"email": email, "password": password, "returnSecureToken": True}
+
+    try:
+        response = requests.post(request_url, json=payload)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return None
+    except:
+        return None
+
 # ---------------------------
-# メイン画面
+# ログイン管理 & サイドバー表示
+# ---------------------------
+if 'is_logged_in' not in st.session_state:
+    st.session_state['is_logged_in'] = False
+if 'user_email' not in st.session_state:
+    st.session_state['user_email'] = ""
+
+with st.sidebar:
+    st.header("👤 ユーザー情報")
+    if st.session_state['is_logged_in']:
+        st.write(f"ログイン中:\n{st.session_state['user_email']}")
+        if st.button("ログアウト"):
+            st.session_state['is_logged_in'] = False
+            st.session_state['user_email'] = ""
+            st.rerun()
+    else:
+        tab1, tab2 = st.tabs(["ログイン", "新規登録"])
+
+        with tab1:
+            with st.form("login_form"):
+                email = st.text_input("メールアドレス", key="login_email")
+                password = st.text_input("パスワード", type="password", key="login_pass")
+                submit_login = st.form_submit_button("ログイン")
+
+                if submit_login:
+                    user = login_user(email, password)
+                    if user:
+                        st.session_state['is_logged_in'] = True
+                        st.session_state['user_email'] = email
+                        st.success("成功！")
+                        st.rerun()
+                    else:
+                        st.error("失敗しました")
+
+        with tab2:
+            with st.form("register_form"):
+                new_email = st.text_input("メールアドレス", key="reg_email")
+                new_password = st.text_input("パスワード", type="password", key="reg_pass")
+                submit_reg = st.form_submit_button("新規登録")
+
+                if submit_reg:
+                    user = register_user(new_email, new_password)
+                    if user:
+                        st.session_state['is_logged_in'] = True
+                        st.session_state['user_email'] = new_email
+                        st.success("登録完了！")
+                        st.rerun()
+                    else:
+                        st.error("登録に失敗しました")
+
+# ---------------------------
+# メイン画面 (ログイン有無に関わらず表示)
 # ---------------------------
 st.title("📻 WebRadio Maker")
 st.caption("公的情報や社内資料を、AIが聞きやすいラジオ番組にします。")
@@ -198,13 +379,21 @@ with col2:
 st.markdown("---")
 
 # 入力モード切替
-input_mode = st.radio("入力ソースを選択", ["URL (記事・動画)", "PDF (資料アップロード)"], horizontal=True)
+input_mode = st.radio("入力ソースを選択", ["URL (記事・動画)", "PDF (資料アップロード)", "NotebookLM音声を番組化"], horizontal=True)
 
 content_text = ""
 source_id = ""
 title_str = "ラジオ番組"
 allow_cache = True
 ready_to_generate = False
+notebook_source_type = "URL"
+notebook_url_input = ""
+notebook_pdf_file = None
+notebook_mp3_file = None
+notebook_bgm_file = None
+notebook_bgm_gain_db = -15
+notebook_program_name = "ミマモリワン"
+notebook_tone = "落ち着いたニュース解説"
 
 # モードA：URL入力
 if input_mode == "URL (記事・動画)":
@@ -262,8 +451,149 @@ elif input_mode == "PDF (資料アップロード)":
             else:
                 ready_to_generate = False
 
+# モードC：NotebookLM音声を番組化
+elif input_mode == "NotebookLM音声を番組化":
+    st.markdown("##### NotebookLM本編MP3をラジオ番組として仕上げる")
+    notebook_source_type = st.radio("本文ソース", ["URL", "PDF"], horizontal=True, key="notebook_source_type")
+
+    if notebook_source_type == "URL":
+        notebook_url_input = st.text_input("記事URL", placeholder="https://...", key="notebook_url_input")
+    else:
+        notebook_pdf_file = st.file_uploader("PDFファイルをアップロード", type="pdf", key="notebook_pdf_file")
+
+    notebook_mp3_file = st.file_uploader("NotebookLMで生成した本編MP3", type="mp3", key="notebook_main_mp3")
+    notebook_bgm_file = st.file_uploader("BGM音源（任意 / MP3・M4A・WAV）", type=["mp3", "m4a", "wav"], key="notebook_bgm_file")
+    st.caption("DOVA-SYNDROMEなど、利用条件を確認済みのBGM素材をアップロードしてください。BGMは番組全体に薄く重ねます。")
+    if notebook_bgm_file is not None:
+        notebook_bgm_gain_db = st.slider("BGM音量", min_value=-40, max_value=-10, value=-15, step=1, format="%d dB")
+    notebook_program_name = st.text_input("番組名", value="ミマモリワン", key="notebook_program_name")
+    notebook_tone = st.selectbox(
+        "番組トーン",
+        ["落ち着いたニュース解説", "親しみやすいラジオ風", "深掘りレポート風", "やさしい雑談風"],
+        key="notebook_tone"
+    )
+    st.caption("NotebookLMモードでは、MVPとして日本語のミマモリワン用テンプレートを優先します。番組トーンは今後の拡張予定です。")
+
 # 生成ロジック
-if ready_to_generate:
+if input_mode == "NotebookLM音声を番組化":
+    if st.button("🎙️ NotebookLM音声を番組化する", use_container_width=True):
+        if notebook_source_type == "URL" and not notebook_url_input:
+            st.error("URLまたはPDFを入力してください。")
+            st.stop()
+        if notebook_source_type == "PDF" and notebook_pdf_file is None:
+            st.error("URLまたはPDFを入力してください。")
+            st.stop()
+        if notebook_mp3_file is None:
+            st.error("NotebookLMで生成した本編MP3をアップロードしてください。")
+            st.stop()
+        if not gemini_key:
+            st.error("Gemini APIキーが未設定です。")
+            st.stop()
+        if not openai_key:
+            st.error("OpenAI APIキーが未設定です。")
+            st.stop()
+
+        # 1. コンテンツ取得
+        with st.spinner("🐢 本文を読み込んでいます..."):
+            try:
+                if notebook_source_type == "URL":
+                    content_text = fetch_content_from_url(notebook_url_input, openai_key)
+                    if "【Web記事：" in content_text:
+                        title_str = content_text.split("【Web記事：")[1].split("】")[0]
+                    else:
+                        title_str = notebook_program_name
+                else:
+                    content_text = extract_text_from_pdf(notebook_pdf_file)
+                    title_str = notebook_pdf_file.name
+            except Exception:
+                st.error("本文取得に失敗しました。URLまたはPDFを確認してください。")
+                st.stop()
+
+            if is_content_fetch_error(content_text):
+                st.error("本文取得に失敗しました。URLまたはPDFを確認してください。")
+                st.stop()
+
+        # 2. intro/outro生成
+        with st.spinner("✍️ 冒頭挨拶と締め挨拶を作成しています..."):
+            try:
+                genai.configure(api_key=gemini_key)
+                model = genai.GenerativeModel('gemini-2.5-flash')
+                intro_text, outro_text = generate_intro_outro(
+                    model,
+                    content_text,
+                    notebook_program_name,
+                    notebook_tone,
+                    language
+                )
+            except Exception:
+                st.error("Geminiによる冒頭挨拶・締め挨拶の生成に失敗しました。")
+                st.stop()
+
+        # 3. intro/outroをTTS化
+        with st.spinner("🎙️ 冒頭挨拶と締め挨拶を音声化しています..."):
+            try:
+                client = OpenAI(api_key=openai_key)
+                intro_path = os.path.join("tmp_audio", "intro.mp3")
+                outro_path = os.path.join("tmp_audio", "outro.mp3")
+                write_tts_mp3(client, intro_text, intro_path, voice="alloy", speed=1.0)
+                write_tts_mp3(client, outro_text, outro_path, voice="alloy", speed=1.0)
+            except Exception:
+                st.error("OpenAI TTSによる音声生成に失敗しました。")
+                st.stop()
+
+        # 4. 音声結合
+        with st.spinner("🎚️ 1本の番組MP3に仕上げています..."):
+            try:
+                main_audio_path = os.path.join("tmp_audio", "notebook_main.mp3")
+                write_uploaded_audio_file(notebook_mp3_file, main_audio_path)
+
+                bgm_path = None
+                bgm_format = None
+                if notebook_bgm_file is not None:
+                    bgm_extension = os.path.splitext(notebook_bgm_file.name)[1].lower()
+                    bgm_path = os.path.join("tmp_audio", f"bgm_source{bgm_extension}")
+                    write_uploaded_audio_file(notebook_bgm_file, bgm_path)
+                    bgm_format = bgm_extension.lstrip(".")
+                    if bgm_format == "m4a":
+                        bgm_format = "mp4"
+
+                output_filename = audio_mixer.combine_intro_main_outro(
+                    intro_path,
+                    main_audio_path,
+                    outro_path,
+                    silence_seconds=2.5,
+                    output_path="final_episode.mp3",
+                    bgm_audio=bgm_path,
+                    bgm_gain_db=notebook_bgm_gain_db,
+                    bgm_format=bgm_format,
+                    bgm_tail_seconds=5.0
+                )
+                with open(output_filename, "rb") as f:
+                    final_audio = f.read()
+            except Exception as e:
+                st.error("音声結合に失敗しました。")
+                with st.expander("エラー詳細"):
+                    st.exception(e)
+                st.stop()
+
+        st.success("🎉 NotebookLM音声の番組化が完了しました！")
+        st.audio(final_audio, format="audio/mp3")
+        st.download_button(
+            "完成MP3をダウンロード",
+            data=final_audio,
+            file_name="final_episode.mp3",
+            mime="audio/mp3",
+            use_container_width=True
+        )
+
+        st.divider()
+        with st.expander("📝 生成された冒頭挨拶・締め挨拶を確認する", expanded=False):
+            st.markdown("**冒頭挨拶**")
+            st.write(intro_text)
+            st.markdown("**締め挨拶**")
+            st.write(outro_text)
+
+elif ready_to_generate:
     btn_label = "🎙️ 番組を再生する" if allow_cache else "🎙️ 番組を再生する（保存なしモード）"
     
     if st.button(btn_label, use_container_width=True):

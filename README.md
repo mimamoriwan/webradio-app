@@ -50,3 +50,7 @@ client_x509_cert_url = "..."
 ## Generated audio
 
 Generated MP3 files such as `radio_output.mp3` are local build outputs and should not be committed. Keep fixed source audio, such as BGM or jingles, in a clearly named asset directory if they need to be versioned later.
+
+## BGM usage
+
+When adding BGM, use only audio files whose rights and usage conditions you have confirmed. If you use free music from services such as DOVA-SYNDROME, check the conditions on each track page before use. BGM source files are not included in this repository; the app is designed to export finished MP3 files that may include user-provided BGM.
