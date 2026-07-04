@@ -89,6 +89,15 @@ def _normalize_audio_format(audio_format):
         return "mp4"
     return audio_format
 
+def _guess_audio_format(audio_source, default_format="mp3"):
+    if not isinstance(audio_source, str):
+        return default_format
+
+    extension = os.path.splitext(audio_source)[1].lower().lstrip(".")
+    if not extension:
+        return default_format
+    return extension
+
 def _loop_to_duration(audio, duration_ms):
     if len(audio) == 0:
         return AudioSegment.silent(duration=duration_ms)
@@ -120,7 +129,7 @@ def combine_intro_main_outro(
     bgm_audio=None,
     bgm_gain_db=-28,
     bgm_format=None,
-    main_format="mp3",
+    main_format=None,
     fade_in_ms=700,
     fade_out_ms=1000,
     bgm_tail_seconds=5.0
@@ -133,6 +142,7 @@ def combine_intro_main_outro(
     gap = AudioSegment.silent(duration=silence_ms)
 
     intro = _load_mp3(intro_audio)
+    main_format = main_format or _guess_audio_format(main_audio)
     main = _load_audio(main_audio, audio_format=_normalize_audio_format(main_format))
     outro = _load_mp3(outro_audio)
 
