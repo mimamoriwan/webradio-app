@@ -7,7 +7,7 @@ WebRadio is a Streamlit app that turns web pages, YouTube transcripts, PDFs, and
 Recommended runtime:
 
 - Python 3.10 or later
-- ffmpeg
+- ffmpeg, used by pydub to read and write audio formats including MP3, M4A, and WAV
 
 Install dependencies:
 
@@ -50,6 +50,8 @@ client_x509_cert_url = "..."
 ## Generated audio
 
 Generated MP3 files such as `radio_output.mp3` are local build outputs and should not be committed. Keep fixed source audio, such as BGM or jingles, in a clearly named asset directory if they need to be versioned later.
+
+NotebookLM main audio can be uploaded as MP3 or M4A. Keep ffmpeg available in the runtime so pydub can decode M4A input and export the finished MP3.
 
 ## BGM usage
 

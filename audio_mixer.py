@@ -84,6 +84,11 @@ def _load_audio(audio_source, audio_format=None):
 def _load_mp3(audio_source):
     return _load_audio(audio_source, audio_format="mp3")
 
+def _normalize_audio_format(audio_format):
+    if audio_format == "m4a":
+        return "mp4"
+    return audio_format
+
 def _loop_to_duration(audio, duration_ms):
     if len(audio) == 0:
         return AudioSegment.silent(duration=duration_ms)
@@ -115,6 +120,7 @@ def combine_intro_main_outro(
     bgm_audio=None,
     bgm_gain_db=-28,
     bgm_format=None,
+    main_format="mp3",
     fade_in_ms=700,
     fade_out_ms=1000,
     bgm_tail_seconds=5.0
@@ -127,13 +133,13 @@ def combine_intro_main_outro(
     gap = AudioSegment.silent(duration=silence_ms)
 
     intro = _load_mp3(intro_audio)
-    main = _load_mp3(main_audio)
+    main = _load_audio(main_audio, audio_format=_normalize_audio_format(main_format))
     outro = _load_mp3(outro_audio)
 
     final_audio = intro + gap + main + gap + outro
 
     if bgm_audio:
-        bgm = _load_audio(bgm_audio, audio_format=bgm_format)
+        bgm = _load_audio(bgm_audio, audio_format=_normalize_audio_format(bgm_format))
         tail = AudioSegment.silent(duration=max(0, int(bgm_tail_seconds * 1000)))
         final_audio += tail
         bgm_bed = _loop_to_duration(bgm, len(final_audio))

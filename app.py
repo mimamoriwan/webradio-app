@@ -389,7 +389,7 @@ ready_to_generate = False
 notebook_source_type = "URL"
 notebook_url_input = ""
 notebook_pdf_file = None
-notebook_mp3_file = None
+notebook_main_audio_file = None
 notebook_bgm_file = None
 notebook_bgm_gain_db = -15
 notebook_program_name = "ミマモリワン"
@@ -461,7 +461,7 @@ elif input_mode == "NotebookLM音声を番組化":
     else:
         notebook_pdf_file = st.file_uploader("PDFファイルをアップロード", type="pdf", key="notebook_pdf_file")
 
-    notebook_mp3_file = st.file_uploader("NotebookLMで生成した本編MP3", type="mp3", key="notebook_main_mp3")
+    notebook_main_audio_file = st.file_uploader("NotebookLMで生成した本編音声（MP3・M4A）", type=["mp3", "m4a"], key="notebook_main_audio")
     notebook_bgm_file = st.file_uploader("BGM音源（任意 / MP3・M4A・WAV）", type=["mp3", "m4a", "wav"], key="notebook_bgm_file")
     st.caption("DOVA-SYNDROMEなど、利用条件を確認済みのBGM素材をアップロードしてください。BGMは番組全体に薄く重ねます。")
     if notebook_bgm_file is not None:
@@ -483,8 +483,8 @@ if input_mode == "NotebookLM音声を番組化":
         if notebook_source_type == "PDF" and notebook_pdf_file is None:
             st.error("URLまたはPDFを入力してください。")
             st.stop()
-        if notebook_mp3_file is None:
-            st.error("NotebookLMで生成した本編MP3をアップロードしてください。")
+        if notebook_main_audio_file is None:
+            st.error("NotebookLMで生成した本編音声をアップロードしてください。")
             st.stop()
         if not gemini_key:
             st.error("Gemini APIキーが未設定です。")
@@ -544,8 +544,12 @@ if input_mode == "NotebookLM音声を番組化":
         # 4. 音声結合
         with st.spinner("🎚️ 1本の番組MP3に仕上げています..."):
             try:
-                main_audio_path = os.path.join("tmp_audio", "notebook_main.mp3")
-                write_uploaded_audio_file(notebook_mp3_file, main_audio_path)
+                main_extension = os.path.splitext(notebook_main_audio_file.name)[1].lower()
+                main_audio_path = os.path.join("tmp_audio", f"notebook_main{main_extension}")
+                write_uploaded_audio_file(notebook_main_audio_file, main_audio_path)
+                main_format = main_extension.lstrip(".")
+                if main_format == "m4a":
+                    main_format = "mp4"
 
                 bgm_path = None
                 bgm_format = None
@@ -566,6 +570,7 @@ if input_mode == "NotebookLM音声を番組化":
                     bgm_audio=bgm_path,
                     bgm_gain_db=notebook_bgm_gain_db,
                     bgm_format=bgm_format,
+                    main_format=main_format,
                     bgm_tail_seconds=5.0
                 )
                 with open(output_filename, "rb") as f:
