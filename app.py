@@ -21,7 +21,7 @@ import audio_mixer # ★これを追加！
 # ---------------------------
 # 基本設定
 # ---------------------------
-st.set_page_config(page_title="WebRadio", page_icon="📻")
+st.set_page_config(page_title="WebRadio", page_icon="📻", initial_sidebar_state="collapsed")
 
 # ==========================================
 # 🎨 UIクリーニング（余計なアイコンを消す）
@@ -194,7 +194,23 @@ def parse_json_response(response_text):
             raise ValueError("JSON not found")
         return json.loads(match.group(0))
 
-def generate_intro_outro(model, content_text, program_name, tone, language):
+def generate_intro_outro(model, content_text, program_name, tone, language, episode_length="short"):
+    length_guides = {
+        "short": {
+            "label": "ショート版",
+            "summary_rule": "記事の概要と全体像が短時間でつかめる紹介文にすること。",
+            "intro_guide": "このショート版では、まず記事の概要を整理しながら、全体像をつかみやすくお届けします。",
+            "focus_fallback": "記事の概要と全体像"
+        },
+        "long": {
+            "label": "ロング版",
+            "summary_rule": "テーマの背景、問題点、影響、考えるべき論点が伝わる紹介文にすること。",
+            "intro_guide": "このロング版では、背景にある問題点や論点にも踏み込みながら、テーマをじっくり深掘りしていきます。",
+            "focus_fallback": "背景にある問題点や論点"
+        }
+    }
+    length_config = length_guides.get(episode_length, length_guides["short"])
+
     prompt = f"""
     以下の参考本文から、ラジオ番組「ミマモリワン」で紹介する今回のテーマと短い紹介文だけを抽出してください。
 
@@ -208,6 +224,7 @@ def generate_intro_outro(model, content_text, program_name, tone, language):
     - 出力はJSONのみ。Markdownは使わないこと。
     - 本編台本、冒頭挨拶、締め挨拶は作らないこと。
     - 日本語で自然に書くこと。
+    - {length_config["label"]}として、{length_config["summary_rule"]}
 
     【参考本文】
     {content_text[:8000]}
@@ -215,7 +232,7 @@ def generate_intro_outro(model, content_text, program_name, tone, language):
     response_text = model.generate_content(prompt).text
     data = parse_json_response(response_text)
     theme = str(data.get("theme", "")).strip() or "今回のテーマ"
-    summary = str(data.get("summary", "")).strip() or "日常の中で気になる話題を、少し深く見つめていきます。"
+    summary = str(data.get("summary", "")).strip() or f"今回は、{length_config['focus_fallback']}をわかりやすく見つめていきます。"
 
     intro_text = f"""
     みなさんこんにちは。ミマモリワンのラジオのお時間がやってきました。
@@ -227,6 +244,8 @@ def generate_intro_outro(model, content_text, program_name, tone, language):
     さて、今回のミマモリワンでは、{theme}についてご紹介します。
 
     {summary}
+
+    {length_config["intro_guide"]}
 
     それでは、本編をお楽しみください。
     """.strip()
@@ -266,6 +285,27 @@ def write_uploaded_audio_file(uploaded_file, output_path):
     with open(output_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
     return output_path
+
+def render_notebook_result(audio_path, intro_text, outro_text):
+    st.audio(audio_path, format="audio/mpeg")
+
+    with open(audio_path, "rb") as f:
+        final_audio = f.read()
+
+    st.download_button(
+        "完成MP3をダウンロード",
+        data=final_audio,
+        file_name="final_episode.mp3",
+        mime="audio/mpeg",
+        use_container_width=True
+    )
+
+    st.divider()
+    with st.expander("📝 生成された冒頭挨拶・締め挨拶を確認する", expanded=False):
+        st.markdown("**冒頭挨拶**")
+        st.write(intro_text)
+        st.markdown("**締め挨拶**")
+        st.write(outro_text)
 
 def login_user(email, password):
     # secrets.toml からAPIキーを取得
@@ -314,47 +354,48 @@ if 'user_email' not in st.session_state:
     st.session_state['user_email'] = ""
 
 with st.sidebar:
-    st.header("👤 ユーザー情報")
-    if st.session_state['is_logged_in']:
-        st.write(f"ログイン中:\n{st.session_state['user_email']}")
-        if st.button("ログアウト"):
-            st.session_state['is_logged_in'] = False
-            st.session_state['user_email'] = ""
-            st.rerun()
-    else:
-        tab1, tab2 = st.tabs(["ログイン", "新規登録"])
+    with st.expander("👤 アカウント設定", expanded=False):
+        if st.session_state['is_logged_in']:
+            st.caption("ログイン中")
+            st.write(st.session_state['user_email'])
+            if st.button("ログアウト"):
+                st.session_state['is_logged_in'] = False
+                st.session_state['user_email'] = ""
+                st.rerun()
+        else:
+            tab1, tab2 = st.tabs(["ログイン", "新規登録"])
 
-        with tab1:
-            with st.form("login_form"):
-                email = st.text_input("メールアドレス", key="login_email")
-                password = st.text_input("パスワード", type="password", key="login_pass")
-                submit_login = st.form_submit_button("ログイン")
+            with tab1:
+                with st.form("login_form"):
+                    email = st.text_input("メールアドレス", key="login_email")
+                    password = st.text_input("パスワード", type="password", key="login_pass")
+                    submit_login = st.form_submit_button("ログイン")
 
-                if submit_login:
-                    user = login_user(email, password)
-                    if user:
-                        st.session_state['is_logged_in'] = True
-                        st.session_state['user_email'] = email
-                        st.success("成功！")
-                        st.rerun()
-                    else:
-                        st.error("失敗しました")
+                    if submit_login:
+                        user = login_user(email, password)
+                        if user:
+                            st.session_state['is_logged_in'] = True
+                            st.session_state['user_email'] = email
+                            st.success("成功！")
+                            st.rerun()
+                        else:
+                            st.error("失敗しました")
 
-        with tab2:
-            with st.form("register_form"):
-                new_email = st.text_input("メールアドレス", key="reg_email")
-                new_password = st.text_input("パスワード", type="password", key="reg_pass")
-                submit_reg = st.form_submit_button("新規登録")
+            with tab2:
+                with st.form("register_form"):
+                    new_email = st.text_input("メールアドレス", key="reg_email")
+                    new_password = st.text_input("パスワード", type="password", key="reg_pass")
+                    submit_reg = st.form_submit_button("新規登録")
 
-                if submit_reg:
-                    user = register_user(new_email, new_password)
-                    if user:
-                        st.session_state['is_logged_in'] = True
-                        st.session_state['user_email'] = new_email
-                        st.success("登録完了！")
-                        st.rerun()
-                    else:
-                        st.error("登録に失敗しました")
+                    if submit_reg:
+                        user = register_user(new_email, new_password)
+                        if user:
+                            st.session_state['is_logged_in'] = True
+                            st.session_state['user_email'] = new_email
+                            st.success("登録完了！")
+                            st.rerun()
+                        else:
+                            st.error("登録に失敗しました")
 
 # ---------------------------
 # メイン画面 (ログイン有無に関わらず表示)
@@ -394,6 +435,7 @@ notebook_bgm_file = None
 notebook_bgm_gain_db = -15
 notebook_program_name = "ミマモリワン"
 notebook_tone = "落ち着いたニュース解説"
+notebook_episode_length = "short"
 
 # モードA：URL入力
 if input_mode == "URL (記事・動画)":
@@ -473,6 +515,21 @@ elif input_mode == "NotebookLM音声を番組化":
         key="notebook_tone"
     )
     st.caption("NotebookLMモードでは、MVPとして日本語のミマモリワン用テンプレートを優先します。番組トーンは今後の拡張予定です。")
+    episode_length_options = {
+        "short": "ショート版（概要と全体像）",
+        "long": "ロング版（問題点まで深掘り）"
+    }
+    notebook_episode_length = st.radio(
+        "番組の長さ",
+        options=list(episode_length_options.keys()),
+        format_func=lambda x: episode_length_options[x],
+        horizontal=True,
+        key="notebook_episode_length"
+    )
+    if notebook_episode_length == "short":
+        st.caption("記事の概要を説明しつつ、全体像をつかみやすい冒頭案内にします。")
+    else:
+        st.caption("背景にある問題点や論点にも触れ、じっくり深掘りする冒頭案内にします。")
 
 # 生成ロジック
 if input_mode == "NotebookLM音声を番組化":
@@ -523,7 +580,8 @@ if input_mode == "NotebookLM音声を番組化":
                     content_text,
                     notebook_program_name,
                     notebook_tone,
-                    language
+                    language,
+                    notebook_episode_length
                 )
             except Exception:
                 st.error("Geminiによる冒頭挨拶・締め挨拶の生成に失敗しました。")
@@ -573,30 +631,23 @@ if input_mode == "NotebookLM音声を番組化":
                     main_format=main_format,
                     bgm_tail_seconds=5.0
                 )
-                with open(output_filename, "rb") as f:
-                    final_audio = f.read()
             except Exception as e:
                 st.error("音声結合に失敗しました。")
                 with st.expander("エラー詳細"):
                     st.exception(e)
                 st.stop()
 
+        st.session_state["notebook_final_audio_path"] = output_filename
+        st.session_state["notebook_intro_text"] = intro_text
+        st.session_state["notebook_outro_text"] = outro_text
         st.success("🎉 NotebookLM音声の番組化が完了しました！")
-        st.audio(final_audio, format="audio/mp3")
-        st.download_button(
-            "完成MP3をダウンロード",
-            data=final_audio,
-            file_name="final_episode.mp3",
-            mime="audio/mp3",
-            use_container_width=True
-        )
 
-        st.divider()
-        with st.expander("📝 生成された冒頭挨拶・締め挨拶を確認する", expanded=False):
-            st.markdown("**冒頭挨拶**")
-            st.write(intro_text)
-            st.markdown("**締め挨拶**")
-            st.write(outro_text)
+    if "notebook_final_audio_path" in st.session_state:
+        render_notebook_result(
+            st.session_state["notebook_final_audio_path"],
+            st.session_state.get("notebook_intro_text", ""),
+            st.session_state.get("notebook_outro_text", "")
+        )
 
 elif ready_to_generate:
     btn_label = "🎙️ 番組を再生する" if allow_cache else "🎙️ 番組を再生する（保存なしモード）"

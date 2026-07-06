@@ -217,6 +217,38 @@ What changed:
   - M4A main audio with M4A BGM
   - M4A main audio with WAV BGM
 
+### Account sidebar visibility adjustment
+
+Uncommitted change as of 2026-07-06.
+
+What changed:
+
+- Kept the existing login/register functionality.
+- Made the Streamlit sidebar collapsed by default.
+- Moved login/register controls into a collapsed `アカウント設定` expander so the main radio creation workflow is more prominent.
+
+### NotebookLM short/long intro guidance
+
+Uncommitted change as of 2026-07-06.
+
+What changed:
+
+- Added a NotebookLM mode `番組の長さ` choice before the generate button.
+- `ショート版` guides the intro toward article overview and overall structure.
+- `ロング版` guides the intro toward deeper explanation, problems, and discussion points.
+- Kept the uploaded main audio flow unchanged; the choice affects the generated intro/outro text only.
+
+### NotebookLM playback stability fix
+
+Uncommitted change as of 2026-07-06.
+
+What changed:
+
+- Changed the NotebookLM result player and download MIME type from `audio/mp3` to browser-standard `audio/mpeg`.
+- Stored the generated NotebookLM final audio and intro/outro text in Streamlit session state so the player remains available after reruns.
+- Verified the generated `final_episode.mp3` file is a valid MP3 before changing the player handling.
+- Switched the NotebookLM audio player from in-memory bytes playback to file-path playback using `final_episode.mp3`; the download button still reads the file bytes separately.
+
 ## Local Run Commands
 
 Use the project virtual environment when available:
